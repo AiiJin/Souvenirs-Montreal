@@ -161,25 +161,19 @@
     }
 
     .bar {
-      position: relative;
       height: 13px;
       overflow: hidden;
       border-radius: 999px;
-      background: #eadfec;
+      background: #e7ddea;
     }
 
     .bar-fill {
       position: relative;
       width: 0%;
       height: 100%;
-      border-radius: inherit;
       overflow: hidden;
-      background:
-        linear-gradient(90deg,
-          #d71920 0 25%,
-          #fff7f1 25% 75%,
-          #d71920 75% 100%);
-      box-shadow: inset 0 0 0 1px rgba(215, 25, 32, .14);
+      border-radius: inherit;
+      background: linear-gradient(90deg, #d92121 0 26%, #fff 26% 74%, #d92121 74% 100%);
       transition: width .28s ease;
     }
 
@@ -188,11 +182,10 @@
       position: absolute;
       left: 50%;
       top: 50%;
-      transform: translate(-50%, -51%);
-      color: #d71920;
-      font-size: 11px;
+      transform: translate(-50%, -50%);
+      color: #d92121;
+      font-size: .78rem;
       line-height: 1;
-      filter: saturate(1.08);
     }
 
     .startup-warning {
@@ -674,7 +667,7 @@
     .todo {
       position: relative;
       display: grid;
-      grid-template-columns: auto 1fr;
+      grid-template-columns: auto 1fr auto;
       gap: 12px;
       align-items: start;
       min-height: 66px;
@@ -774,6 +767,7 @@
     .activity-text {
       position: relative;
       min-width: 0;
+      padding-right: 48px;
     }
 
     .card-top {
@@ -871,6 +865,9 @@
     }
 
     .favorite {
+      position: absolute;
+      top: 16px;
+      right: 12px;
       width: 34px;
       min-height: 34px;
       border-radius: 999px;
@@ -966,15 +963,24 @@
     }
 
     .delete {
-      border-color: rgba(222, 209, 230, .92);
-      background: rgba(255, 250, 245, .9);
-      color: #9f6a92;
+      position: absolute;
+      right: 12px;
+      bottom: 12px;
+      width: 34px;
+      min-height: 34px;
+      border-radius: 999px;
+      border: 1px solid rgba(222, 209, 230, .92);
+      background: rgba(255, 250, 245, .92);
+      color: #a991a4;
+      font-size: 1.08rem;
+      line-height: 1;
+      padding: 0;
     }
 
     .restore-button {
-      border-color: rgba(163, 95, 159, .26);
-      background: rgba(163, 95, 159, .12);
-      color: var(--pink-dark);
+      border-color: rgba(75, 139, 104, .38);
+      background: rgba(119, 177, 139, .2);
+      color: #3f7b5a;
     }
 
     .modal {
@@ -1284,12 +1290,12 @@
       }
 
       .result-pill {
-        grid-column: 1 / -1;
         white-space: normal;
       }
 
       .sort-wrap {
-        grid-template-columns: 1fr;
+        display: block;
+        width: 100%;
         gap: 0;
       }
 
@@ -1301,6 +1307,9 @@
         width: 100%;
         min-width: 0;
         min-height: 46px;
+        text-align: center;
+        text-align-last: center;
+        padding-inline: 12px;
       }
 
       .filter-panel {
@@ -1366,9 +1375,18 @@
       }
 
       .favorite {
+        top: 11px;
+        right: 11px;
         width: 40px;
         min-height: 40px;
         flex: 0 0 auto;
+      }
+
+      .delete {
+        right: 11px;
+        bottom: 11px;
+        width: 40px;
+        min-height: 40px;
       }
 
       .place-meta {
@@ -1384,6 +1402,11 @@
       .card-actions {
         display: grid;
         grid-template-columns: 1fr;
+        padding-right: 48px;
+      }
+
+      .todo.deleted .card-actions {
+        padding-right: 0;
       }
 
       .details-button {
@@ -7953,9 +7976,6 @@ window.places = [
       })
       .map((sector) => [sector, sector]);
     const filterDefinitions = [
-      { key: "status", title: "Statut", mode: "single", open: true, options: [
-        ["all", "Toutes"], ["todo", "A faire"], ["done", "Faites"], ["deleted", "Supprimés"]
-      ] },
       { key: "personal", title: "Listes personnelles", mode: "flags", options: [
         ["favorites", "Favoris"], ["custom", "Mes ajouts"]
       ] },
@@ -8054,7 +8074,7 @@ window.places = [
       view: "all",
       filters: loadFilterState(),
       sort: loadFilterState().sort || "recommended",
-      openFilterSections: window.matchMedia("(max-width: 640px)").matches ? new Set(["status"]) : new Set(defaultOpenFilterSections),
+      openFilterSections: window.matchMedia("(max-width: 640px)").matches ? new Set(["categories"]) : new Set(defaultOpenFilterSections),
       origin: loadOriginState(),
       originEditMode: false,
       selectedTag: tags[0].name,
@@ -8094,6 +8114,11 @@ window.places = [
     const originAddressForm = document.querySelector("#originAddressForm");
     const originAddress = document.querySelector("#originAddress");
     const cancelAddressForm = document.querySelector("#cancelAddressForm");
+    const addForm = document.querySelector("#addForm");
+    const addOptions = document.querySelector("#addOptions");
+    const newActivity = document.querySelector("#newActivity");
+    const newAddress = document.querySelector("#newAddress");
+    const newNeighborhood = document.querySelector("#newNeighborhood");
     const tagPalette = document.querySelector("#tagPalette");
     const detailsModal = document.querySelector("#detailsModal");
     const detailsTitle = document.querySelector("#detailsTitle");
@@ -9428,18 +9453,6 @@ window.places = [
         actions.append(routeButton);
       }
 
-      const deleteButton = document.createElement("button");
-      deleteButton.className = item.deleted ? "details-button restore-button" : "details-button delete";
-      deleteButton.type = "button";
-      deleteButton.setAttribute("aria-label", (item.deleted ? "Restaurer " : "Supprimer ") + item.title);
-      deleteButton.textContent = item.deleted ? "Restaurer" : "Supprimer";
-      deleteButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        item.deleted ? restoreItem(item.id) : deleteItem(item.id);
-      });
-      actions.append(deleteButton);
-
       text.append(top, neighborhood, meta, badges, small, actions);
       activity.append(emoji, text);
 
@@ -9451,8 +9464,20 @@ window.places = [
       eraser.className = "eraser-swipe";
       eraser.innerHTML = '<img src="./pencil.png" alt="">';
 
+      const deleteButton = document.createElement("button");
+      deleteButton.className = item.deleted ? "details-button restore-button" : "delete";
+      deleteButton.type = "button";
+      deleteButton.setAttribute("aria-label", (item.deleted ? "Restaurer " : "Supprimer ") + item.title);
+      deleteButton.textContent = item.deleted ? "Restaurer" : "×";
+      deleteButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        item.deleted ? restoreItem(item.id) : deleteItem(item.id);
+      });
+      if (item.deleted) actions.append(deleteButton);
 
       label.append(input, box, activity, pencil, eraser);
+      if (!item.deleted) label.append(deleteButton);
       window.requestAnimationFrame(() => drawStrikeLines(label, strong, strikes));
       return label;
     }
@@ -10102,7 +10127,6 @@ window.places = [
     detailsModal.addEventListener("click", (event) => {
       if (event.target === detailsModal) closeDetails();
     });
-
 
     document.querySelector("#clearDone").addEventListener("click", () => {
       state.items = state.items
