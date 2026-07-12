@@ -1290,6 +1290,7 @@
       }
 
       .result-pill {
+        grid-column: 1 / -1;
         white-space: normal;
       }
 
@@ -1402,11 +1403,11 @@
       .card-actions {
         display: grid;
         grid-template-columns: 1fr;
-        padding-right: 48px;
+        padding-bottom: 52px;
       }
 
       .todo.deleted .card-actions {
-        padding-right: 0;
+        padding-bottom: 0;
       }
 
       .details-button {
@@ -7977,7 +7978,7 @@ window.places = [
       .map((sector) => [sector, sector]);
     const filterDefinitions = [
       { key: "personal", title: "Listes personnelles", mode: "flags", options: [
-        ["favorites", "Favoris"], ["custom", "Mes ajouts"]
+        ["favorites", "Favoris"]
       ] },
       { key: "categories", title: "Type de lieu", mode: "multi", open: true, options: [
         ["Activités et amusement", "Activités"], ["Restaurants et gourmandises", "Restaurants"], ["Quartiers et découvertes", "Quartiers et balades"], ["Nature et points de vue", "Nature et points de vue"], ["Culture", "Culture"], ["Shopping", "Shopping"], ["Excursions et road trips", "Excursions"]
