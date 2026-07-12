@@ -593,7 +593,7 @@
 
     .view-tabs {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(4, 1fr);
       gap: 8px;
       padding: 14px;
       border-bottom: 1px solid var(--line);
@@ -674,7 +674,7 @@
     .todo {
       position: relative;
       display: grid;
-      grid-template-columns: auto 1fr auto;
+      grid-template-columns: auto 1fr;
       gap: 12px;
       align-items: start;
       min-height: 66px;
@@ -892,6 +892,16 @@
       color: #958498;
     }
 
+    .todo.deleted {
+      opacity: .72;
+      background: rgba(246, 239, 247, .86);
+    }
+
+    .todo.deleted .check,
+    .todo.deleted .favorite {
+      opacity: .55;
+    }
+
     .strike-lines {
       position: absolute;
       left: 0;
@@ -956,13 +966,15 @@
     }
 
     .delete {
-      width: 38px;
-      min-height: 38px;
-      border-radius: 12px;
-      background: transparent;
-      color: #a991a4;
-      font-size: 1.25rem;
-      line-height: 1;
+      border-color: rgba(222, 209, 230, .92);
+      background: rgba(255, 250, 245, .9);
+      color: #9f6a92;
+    }
+
+    .restore-button {
+      border-color: rgba(163, 95, 159, .26);
+      background: rgba(163, 95, 159, .12);
+      color: var(--pink-dark);
     }
 
     .modal {
@@ -1380,14 +1392,6 @@
         justify-content: center;
       }
 
-      .delete {
-        position: absolute;
-        right: 8px;
-        bottom: 8px;
-        width: 38px;
-        min-height: 38px;
-      }
-
       .modal {
         align-items: end;
         padding: 10px max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
@@ -1531,6 +1535,7 @@
         <button class="active" data-view="all" type="button">Toutes</button>
         <button data-view="todo" type="button">A faire</button>
         <button data-view="done" type="button">Faites</button>
+        <button data-view="deleted" type="button">Supprimés</button>
       </div>
 
       <div class="sections">
@@ -7949,7 +7954,7 @@ window.places = [
       .map((sector) => [sector, sector]);
     const filterDefinitions = [
       { key: "status", title: "Statut", mode: "single", open: true, options: [
-        ["all", "Toutes"], ["todo", "A faire"], ["done", "Faites"]
+        ["all", "Toutes"], ["todo", "A faire"], ["done", "Faites"], ["deleted", "Supprimés"]
       ] },
       { key: "personal", title: "Listes personnelles", mode: "flags", options: [
         ["favorites", "Favoris"], ["custom", "Mes ajouts"]
@@ -8258,7 +8263,7 @@ window.places = [
 
     function sanitizeFilters(filters) {
       const cleaned = defaultFilters();
-      const statusValues = new Set(["all", "todo", "done"]);
+      const statusValues = new Set(["all", "todo", "done", "deleted"]);
       cleaned.status = statusValues.has(filters.status) ? filters.status : "all";
 
       cleaned.personal.favorites = Boolean(filters.personal && filters.personal.favorites) || filters.status === "favorites";
@@ -8584,7 +8589,8 @@ window.places = [
         return {
           ...item,
           done: doneIds.has(item.id) || doneIds.has(item.sourceId) || Boolean(legacy && legacy.done),
-          favorite: favoriteIds.has(item.id) || favoriteIds.has(item.sourceId) || Boolean(legacy && legacy.favorite)
+          favorite: favoriteIds.has(item.id) || favoriteIds.has(item.sourceId) || Boolean(legacy && legacy.favorite),
+          deleted: hiddenIds.has(item.sourceId || item.id)
         };
       });
 
@@ -8598,7 +8604,7 @@ window.places = [
         .map((item, index) => normalizeCustomItem(item, item.id || "legacy-custom-" + index))
         .filter((item) => item.title && !existingTitles.has(item.title.toLowerCase()));
 
-      return [...mergedBaseItems.filter((item) => !hiddenIds.has(item.sourceId || item.id)), ...normalizedCustomItems, ...legacyCustomItems];
+      return [...mergedBaseItems, ...normalizedCustomItems, ...legacyCustomItems];
     }
 
     function loadUserState() {
@@ -8638,6 +8644,13 @@ window.places = [
       safeStorageSet(HIDDEN_ITEMS_KEY, JSON.stringify([...hiddenIds]));
     }
 
+    function restoreHiddenItemId(item) {
+      if (!item || item.custom) return;
+      const hiddenIds = loadHiddenItemIds();
+      hiddenIds.delete(item.sourceId || item.id);
+      safeStorageSet(HIDDEN_ITEMS_KEY, JSON.stringify([...hiddenIds]));
+    }
+
     function saveItems() {
       const doneIds = state.items.filter((item) => item.done && !item.custom).map((item) => item.sourceId || item.id);
       const favoriteIds = state.items.filter((item) => item.favorite && !item.custom).map((item) => item.sourceId || item.id);
@@ -8660,11 +8673,14 @@ window.places = [
     function currentItems() {
       const search = buildSearchQuery(state.search);
       return sortItems(state.items.filter((item) => {
+        const status = state.filters.status || state.view || "all";
+        const isDeleted = Boolean(item.deleted);
+        if (status === "deleted") return isDeleted && matchesSearch(item, search);
+        if (isDeleted) return false;
         const isAnimatingDone = state.animatingDoneIds.has(item.id);
         const isAnimatingUndone = state.animatingUndoneIds.has(item.id);
         const isDoneForView = item.done && !isAnimatingDone;
         const isTodoForView = !item.done || isAnimatingDone || isAnimatingUndone;
-        const status = state.filters.status || state.view || "all";
         const matchesView =
           status === "all" ||
           (status === "done" && (isDoneForView || isAnimatingUndone)) ||
@@ -9188,14 +9204,15 @@ window.places = [
         state.filters.foodTypes = [];
         saveFilterState();
       }
-      const doneTotal = state.items.filter((item) => item.done).length;
-      const total = state.items.length;
+      const activeItems = state.items.filter((item) => !item.deleted);
+      const doneTotal = activeItems.filter((item) => item.done).length;
+      const total = activeItems.length;
       const percent = total ? Math.round((doneTotal / total) * 100) : 0;
       progressText.textContent = doneTotal + " / " + total + " (" + percent + "%)";
       progressBar.style.width = percent + "%";
 
       let items = currentItems();
-      if (!state.recoveredEmptyState && total > 0 && !items.length && !state.search.trim()) {
+      if (!state.recoveredEmptyState && total > 0 && !items.length && !state.search.trim() && state.filters.status !== "deleted") {
         state.recoveredEmptyState = true;
         state.filters = defaultFilters();
         state.view = "all";
@@ -9207,7 +9224,7 @@ window.places = [
         state.recoveredEmptyState = true;
       }
       if (startupWarning) {
-        if (total > 0 && items.length > 0) {
+        if ((total > 0 && items.length > 0) || state.filters.status === "deleted") {
           startupWarning.classList.add("hidden");
         } else {
           startupWarning.classList.remove("hidden");
@@ -9219,12 +9236,14 @@ window.places = [
       const titles = {
         all: "Toutes",
         todo: "A faire",
-        done: "Faites"
+        done: "Faites",
+        deleted: "Supprimés"
       };
       const labels = {
         all: items.length + " activites",
         todo: items.length + " a faire",
-        done: items.length + " faites"
+        done: items.length + " faites",
+        deleted: items.length + " supprimées"
       };
 
       currentTitle.textContent = titles[state.filters.status] || titles.all;
@@ -9255,7 +9274,7 @@ window.places = [
         const message = document.createElement("p");
         message.textContent = query
           ? 'Aucun résultat pour "' + query + '".'
-          : state.view === "done" ? "Rien de coche pour l'instant." : "Rien ici pour l'instant. Modifie ta recherche ou tes filtres.";
+          : state.view === "deleted" ? "Aucune activite supprimee pour l'instant." : state.view === "done" ? "Rien de coche pour l'instant." : "Rien ici pour l'instant. Modifie ta recherche ou tes filtres.";
         empty.appendChild(message);
         if (query || hasFilters) {
           const actions = document.createElement("div");
@@ -9307,12 +9326,14 @@ window.places = [
       label.className =
         "todo" +
         (item.done || isUndoing ? " done" : "") +
+        (item.deleted ? " deleted" : "") +
         (state.lastCompletedId === item.id ? " just-done" : "") +
         (isUndoing ? " just-undone" : "");
 
       const input = document.createElement("input");
       input.type = "checkbox";
       input.checked = item.done;
+      input.disabled = Boolean(item.deleted);
       input.setAttribute("aria-label", (item.done ? "Décocher " : "Cocher comme faite ") + item.title);
       input.addEventListener("change", () => toggleItem(item.id));
 
@@ -9407,6 +9428,18 @@ window.places = [
         actions.append(routeButton);
       }
 
+      const deleteButton = document.createElement("button");
+      deleteButton.className = item.deleted ? "details-button restore-button" : "details-button delete";
+      deleteButton.type = "button";
+      deleteButton.setAttribute("aria-label", (item.deleted ? "Restaurer " : "Supprimer ") + item.title);
+      deleteButton.textContent = item.deleted ? "Restaurer" : "Supprimer";
+      deleteButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        item.deleted ? restoreItem(item.id) : deleteItem(item.id);
+      });
+      actions.append(deleteButton);
+
       text.append(top, neighborhood, meta, badges, small, actions);
       activity.append(emoji, text);
 
@@ -9418,19 +9451,8 @@ window.places = [
       eraser.className = "eraser-swipe";
       eraser.innerHTML = '<img src="./pencil.png" alt="">';
 
-      const deleteButton = document.createElement("button");
-      deleteButton.className = "delete";
-      deleteButton.type = "button";
-      deleteButton.setAttribute("aria-label", "Supprimer " + item.title);
-      deleteButton.textContent = "×";
-      deleteButton.addEventListener("click", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        deleteItem(item.id);
-      });
 
       label.append(input, box, activity, pencil, eraser);
-      label.append(deleteButton);
       window.requestAnimationFrame(() => drawStrikeLines(label, strong, strikes));
       return label;
     }
@@ -9933,11 +9955,23 @@ window.places = [
     function deleteItem(id) {
       const removed = state.items.find((item) => item.id === id);
       saveHiddenItemId(removed);
-      state.items = state.items.filter((item) => item.id !== id);
+      state.items = state.items.map((item) =>
+        item.id === id ? { ...item, deleted: true } : item
+      );
       state.animatingDoneIds.delete(id);
       state.animatingUndoneIds.delete(id);
       if (state.lastCompletedId === id) state.lastCompletedId = null;
       if (state.lastUndoneId === id) state.lastUndoneId = null;
+      saveItems();
+      render();
+    }
+
+    function restoreItem(id) {
+      const restored = state.items.find((item) => item.id === id);
+      restoreHiddenItemId(restored);
+      state.items = state.items.map((item) =>
+        item.id === id ? { ...item, deleted: false } : item
+      );
       saveItems();
       render();
     }
