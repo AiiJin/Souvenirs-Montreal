@@ -1268,21 +1268,27 @@
       }
 
       .control-actions {
-        grid-template-columns: 1fr;
+        grid-template-columns: 1fr 1fr;
       }
 
       .result-pill {
+        grid-column: 1 / -1;
         white-space: normal;
       }
 
       .sort-wrap {
         grid-template-columns: 1fr;
-        gap: 5px;
+        gap: 0;
+      }
+
+      .sort-wrap > span {
+        display: none;
       }
 
       .sort-select {
         width: 100%;
         min-width: 0;
+        min-height: 46px;
       }
 
       .filter-panel {
@@ -1506,7 +1512,7 @@
           <label class="sort-wrap" for="sortSelect">
             <span>Trier par</span>
             <select class="sort-select" id="sortSelect" aria-label="Trier par">
-              <option value="recommended">Recommandés</option>
+              <option value="recommended">Recommandé</option>
               <option value="near">Plus proches de l'ETS</option>
               <option value="nearMe">Les plus proches de moi</option>
               <option value="cheap">Moins chers</option>
@@ -1519,21 +1525,11 @@
           <div class="active-filter-bar" id="activeFilterBar"></div>
           <div id="filterGroups"></div>
         </div>
-        <form class="add-row" id="addForm">
-          <input id="newActivity" type="text" placeholder="Ajouter une idee" maxlength="80" autocomplete="off">
-          <button type="submit">Ajouter</button>
-        </form>
-        <div class="add-options" id="addOptions">
-          <p class="palette-title">Tag</p>
-          <div class="tag-palette" id="tagPalette" role="group" aria-label="Tags proposes"></div>
-          <input class="custom-location-input" id="newAddress" type="text" placeholder="Adresse (facultatif)" autocomplete="street-address">
-          <input class="custom-location-input" id="newNeighborhood" type="text" placeholder="Quartier (facultatif)" autocomplete="address-level2">
-        </div>
       </div>
 
       <div class="view-tabs" role="group" aria-label="Choix de la rubrique">
         <button class="active" data-view="all" type="button">Toutes</button>
-        <button data-view="todo" type="button">To do</button>
+        <button data-view="todo" type="button">A faire</button>
         <button data-view="done" type="button">Faites</button>
       </div>
 
@@ -7903,6 +7899,7 @@ window.places = [
     const STORAGE_KEY = "montrealCuteTodo.v2";
     const OLD_STORAGE_KEY = "montrealCuteTodo.v1";
     const USER_STATE_KEY = "montrealCuteTodo.userState.v1";
+    const HIDDEN_ITEMS_KEY = "montrealCuteTodo.hiddenItems.v1";
     const FILTER_STATE_KEY = "montrealCuteTodo.filterState.v1";
     const ORIGIN_STORAGE_KEY = "montrealBucketListOrigin";
     const DEFAULT_ETS_ORIGIN = {
@@ -7952,7 +7949,7 @@ window.places = [
       .map((sector) => [sector, sector]);
     const filterDefinitions = [
       { key: "status", title: "Statut", mode: "single", open: true, options: [
-        ["all", "Toutes"], ["todo", "To do"], ["done", "Faites"]
+        ["all", "Toutes"], ["todo", "A faire"], ["done", "Faites"]
       ] },
       { key: "personal", title: "Listes personnelles", mode: "flags", options: [
         ["favorites", "Favoris"], ["custom", "Mes ajouts"]
@@ -8092,11 +8089,6 @@ window.places = [
     const originAddressForm = document.querySelector("#originAddressForm");
     const originAddress = document.querySelector("#originAddress");
     const cancelAddressForm = document.querySelector("#cancelAddressForm");
-    const addForm = document.querySelector("#addForm");
-    const addOptions = document.querySelector("#addOptions");
-    const newActivity = document.querySelector("#newActivity");
-    const newAddress = document.querySelector("#newAddress");
-    const newNeighborhood = document.querySelector("#newNeighborhood");
     const tagPalette = document.querySelector("#tagPalette");
     const detailsModal = document.querySelector("#detailsModal");
     const detailsTitle = document.querySelector("#detailsTitle");
@@ -8223,6 +8215,14 @@ window.places = [
     function safeStorageSet(key, value) {
       try {
         localStorage.setItem(key, value);
+      } catch {
+        // Keep the app usable even when local file storage is blocked.
+      }
+    }
+
+    function safeStorageRemove(key) {
+      try {
+        localStorage.removeItem(key);
       } catch {
         // Keep the app usable even when local file storage is blocked.
       }
@@ -8570,6 +8570,7 @@ window.places = [
     function loadItems() {
       const baseItems = makeDefaultItems();
       const userState = loadUserState();
+      const hiddenIds = loadHiddenItemIds();
       const hasUserState = safeStorageGet(USER_STATE_KEY) !== null;
       const legacyItems = hasUserState ? [] : loadLegacyItems();
       const doneIds = new Set(userState.doneIds || []);
@@ -8597,7 +8598,7 @@ window.places = [
         .map((item, index) => normalizeCustomItem(item, item.id || "legacy-custom-" + index))
         .filter((item) => item.title && !existingTitles.has(item.title.toLowerCase()));
 
-      return [...mergedBaseItems, ...normalizedCustomItems, ...legacyCustomItems];
+      return [...mergedBaseItems.filter((item) => !hiddenIds.has(item.sourceId || item.id)), ...normalizedCustomItems, ...legacyCustomItems];
     }
 
     function loadUserState() {
@@ -8618,6 +8619,23 @@ window.places = [
         return [];
       }
       return [];
+    }
+
+    function loadHiddenItemIds() {
+      try {
+        const saved = JSON.parse(safeStorageGet(HIDDEN_ITEMS_KEY) || "[]");
+        if (Array.isArray(saved)) return new Set(saved.filter(Boolean));
+      } catch {
+        return new Set();
+      }
+      return new Set();
+    }
+
+    function saveHiddenItemId(item) {
+      if (!item || item.custom) return;
+      const hiddenIds = loadHiddenItemIds();
+      hiddenIds.add(item.sourceId || item.id);
+      safeStorageSet(HIDDEN_ITEMS_KEY, JSON.stringify([...hiddenIds]));
     }
 
     function saveItems() {
@@ -8993,6 +9011,7 @@ window.places = [
     }
 
     function renderPalette() {
+      if (!tagPalette) return;
       tagPalette.textContent = "";
       tags.forEach((tag) => {
         const button = document.createElement("button");
@@ -9199,7 +9218,7 @@ window.places = [
       }
       const titles = {
         all: "Toutes",
-        todo: "To do",
+        todo: "A faire",
         done: "Faites"
       };
       const labels = {
@@ -9236,7 +9255,7 @@ window.places = [
         const message = document.createElement("p");
         message.textContent = query
           ? 'Aucun résultat pour "' + query + '".'
-          : state.view === "done" ? "Rien de coche pour l'instant." : "Rien ici pour l'instant. Ajoute une idee ou modifie ta recherche.";
+          : state.view === "done" ? "Rien de coche pour l'instant." : "Rien ici pour l'instant. Modifie ta recherche ou tes filtres.";
         empty.appendChild(message);
         if (query || hasFilters) {
           const actions = document.createElement("div");
@@ -9411,7 +9430,7 @@ window.places = [
       });
 
       label.append(input, box, activity, pencil, eraser);
-      if (item.custom) label.append(deleteButton);
+      label.append(deleteButton);
       window.requestAnimationFrame(() => drawStrikeLines(label, strong, strikes));
       return label;
     }
@@ -9912,6 +9931,8 @@ window.places = [
     }
 
     function deleteItem(id) {
+      const removed = state.items.find((item) => item.id === id);
+      saveHiddenItemId(removed);
       state.items = state.items.filter((item) => item.id !== id);
       state.animatingDoneIds.delete(id);
       state.animatingUndoneIds.delete(id);
@@ -10048,64 +10069,6 @@ window.places = [
       if (event.target === detailsModal) closeDetails();
     });
 
-    newActivity.addEventListener("focus", () => {
-      addOptions.classList.add("open");
-    });
-
-    newActivity.addEventListener("click", () => {
-      addOptions.classList.add("open");
-    });
-
-    document.addEventListener("pointerdown", (event) => {
-      if (addForm.contains(event.target) || addOptions.contains(event.target)) return;
-      addOptions.classList.remove("open");
-    });
-
-    newActivity.addEventListener("blur", () => {
-      window.setTimeout(() => {
-        if (addForm.contains(document.activeElement) || addOptions.contains(document.activeElement)) return;
-        addOptions.classList.remove("open");
-      }, 120);
-    });
-
-    addForm.addEventListener("submit", (event) => {
-      event.preventDefault();
-      const title = newActivity.value.trim();
-      if (!title) return;
-      const tag = findTag(state.selectedTag);
-      const address = newAddress.value.trim();
-      const neighborhood = newNeighborhood.value.trim();
-      const place = address || neighborhood ? {
-        nom: title,
-        categorie: tag.category,
-        sousCategorie: "Ajout personnel",
-        quartier: neighborhood,
-        adresse: address,
-        prix: { texte: "Prix à ajouter" },
-        tags: [],
-        ambiance: [],
-        ajoutPersonnel: true
-      } : null;
-      state.items.unshift({
-        id: "custom-" + Date.now(),
-        title,
-        tag: tag.name,
-        category: tag.category,
-        emoji: tag.emoji,
-        address,
-        neighborhood,
-        place,
-        done: false,
-        favorite: false,
-        custom: true
-      });
-      newActivity.value = "";
-      newAddress.value = "";
-      newNeighborhood.value = "";
-      addOptions.classList.remove("open");
-      saveItems();
-      render();
-    });
 
     document.querySelector("#clearDone").addEventListener("click", () => {
       state.items = state.items
@@ -10133,6 +10096,7 @@ window.places = [
       state.animatingDoneIds.clear();
       state.animatingUndoneIds.clear();
       state.confettiPlayed = false;
+      safeStorageRemove(HIDDEN_ITEMS_KEY);
       saveItems();
       saveFilterState();
       updateOriginDependentUI();
